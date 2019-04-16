@@ -1,0 +1,584 @@
+---
+title: "Chen_DataMining_hw3"
+author: "Xuejun Chen"
+date: "2018/3/22"
+output: pdf_document
+---
+
+```{r}
+library(glmnet)
+library(MASS) # mvrnorm
+load("/Users/AudreyChen/Desktop/Data\ Mining/hw3.rdata")
+```
+
+
+# 4
+```{r}
+nsim <- 1000
+
+# loop for each combination
+for (pi in c(0.25,0.5)){
+  for( delta in c(0,1,2,3)){
+    for(p in c(1,3,5,10)){
+      
+      recorded.err.train <- rep(NA,nsim)
+      recorded.err.test <- rep(NA,nsim)
+      lda.err.test <- rep(NA,nsim)
+      lda.err.train <- rep(NA,nsim)
+      
+      for(m in 1:nsim){
+        mu0 <- (delta/2)*c(1,rep(0,p-1))
+        mu1 <- -mu0
+        sigma <- diag(p)
+        
+        ################ simulating data #########################
+        # 300 training 
+        set.seed(123)
+        n0=300*(1-pi)
+        n1=300*pi
+        
+        train_x0 <- mvrnorm(n0,mu0,sigma)
+        train_x1 <- mvrnorm(n1,mu1,sigma)
+        
+        train_x <- rbind(train_x0,train_x1)
+        y_train <- c(rep(0,n0),rep(1,n1))
+        
+        # 1000 testing 
+        test_x0 <- mvrnorm(1000*(1-pi),mu0,sigma)
+        test_x1 <- mvrnorm(1000*pi,mu1,sigma)
+        
+        test_x <- rbind(test_x0,test_x1)
+        y_test <- c(rep(0,1000*(1-pi)),rep(1,1000*pi))
+        
+        ###########################################################
+        # logistic regression
+        ###########################################################
+      
+        if (p==1){
+          colnames(train_x)="v1"
+          colnames(test_x)="v1"
+        }
+          
+        ans.logistic <- glm(y_train~., family="binomial",data.frame(y_train,train_x))
+        
+        # record estimated coefficients
+        coef.logistic <- coef(ans.logistic)
+        
+        # misclassification rate on the training set
+        a_train <- predict(ans.logistic,newdata=data.frame(train_x),type = "link")
+        prob_train <- exp(a_train)/(exp(a_train)+1)
+        classification1 <- table(prob_train>0.5,y_train)
+        
+        # record the rate
+        recorded.err.train[m] <- 1-sum(diag(classification1))/sum(classification1)
+        
+        # misclassification rate on the testing set
+        a_test <- predict(ans.logistic,newdata=data.frame(test_x),type = "link")
+        prob_test <- exp(a_test)/(exp(a_test)+1)
+        classification2 <- table(prob_test>0.5,y_test)
+        
+        # record the rate
+        recorded.err.test[m] <- 1-sum(diag(classification2))/sum(classification2)
+        
+        ###########################################################
+        # linear discriminant analysis
+        ###########################################################
+        # estimate parameters
+        pi1.hat <- mean(y_train==1)
+        pi2.hat <- mean(y_train==0)
+        mu.1.hat <- apply(train_x0,2,mean)
+        mu.2.hat <- apply(train_x1,2,mean)
+        
+        # within class covariance
+        S.w <- (t(train_x0 - rep(1,n0)%*% t(mu.1.hat)) %*% (train_x0 - rep(1,n0)%*% t(mu.1.hat)) +
+                  t(train_x1 - rep(1,n1)%*% t(mu.2.hat)) %*% (train_x1 - rep(1,n1)%*% t(mu.2.hat)))/(n0+n1-2)
+        
+        # decision boundary
+        coefficient <- solve(S.w) %*% (mu.2.hat-mu.1.hat)
+        intercept <- log(pi2.hat/pi1.hat) - t(mu.2.hat+mu.1.hat) %*% solve(S.w) %*% (mu.2.hat-mu.1.hat)/2
+        
+        # classification
+        
+        # training
+        y.hat <-  ((train_x %*% coefficient + as.vector(intercept)) >0) * 1
+        # error rate
+        lda.err.train[m] <- mean(y_train!=y.hat)
+        
+        # testing
+        x_test <- rbind(test_x0,test_x1)
+        y.hat_test <-  ((x_test %*% coefficient + as.vector(intercept)) >0) * 1
+        # error rate
+        lda.err.test[m] <-mean(y_test!=y.hat_test)
+      }
+      my_list <- list(pi = pi,delta=delta,p = p,
+                      "recorded.err.train" = mean(recorded.err.train), 
+                      "recorded.err.test" = mean(recorded.err.test),
+                      "lda.err.train"=mean(lda.err.train),
+                      "lda.err.test"=mean(lda.err.test))
+      print(my_list)
+    }
+  }
+}
+
+# b)
+# According to the mean missclassification errors, we can see the linear discriminant analysis performs better than # logistic regression.  
+```
+
+#5
+##a)
+```{r}
+zip.train <- rbind(train2,train3,train8)
+zip.test <- rbind(test2,test3,test8)
+
+# center data
+train2.mu.hat <- apply(train2,2,mean)
+train3.mu.hat <- apply(train3,2,mean)
+train8.mu.hat <- apply(train8,2,mean)
+test2.mu.hat <- apply(test2,2,mean)
+test3.mu.hat <- apply(test3,2,mean)
+test8.mu.hat <- apply(test8,2,mean)
+
+zip.train.mu.hat <- apply(zip.train,2,mean)
+zip.test.mu.hat <- apply(zip.test,2,mean)
+
+train2.centered <- train2 - rep(1,nrow(train2))%*%t(train2.mu.hat)
+train3.centered <- train3 - rep(1,nrow(train3))%*%t(train3.mu.hat)
+train8.centered <- train8 - rep(1,nrow(train8))%*%t(train8.mu.hat)
+zip.train.centered <- zip.train - rep(1,nrow(zip.train))%*%t(zip.train.mu.hat)
+
+test2.centered <- test2 - rep(1,nrow(test2))%*%t(train2.mu.hat)
+test3.centered <- test3 - rep(1,nrow(test3))%*%t(train3.mu.hat)
+test8.centered <- test8 - rep(1,nrow(test8))%*%t(train8.mu.hat)
+zip.test.centered <- zip.test - rep(1,nrow(zip.test))%*%t(zip.test.mu.hat)
+```
+
+## b. PCA
+```{r}
+# principal components are the eigenvectors of the covariance matrix
+n <- nrow(zip.train.centered)
+n1 <- nrow(train2.centered)
+n2<- nrow(train3.centered)
+n3<- nrow(train8.centered)
+
+pc <- eigen(cov(zip.train.centered))
+A <- pc$vectors[, 1:2]
+########################################
+# check
+pr.out=prcomp(zip.train.centered) 
+head(A)
+head(pr.out$rotation[,1:2]) 
+
+### plot
+x <- zip.train.centered
+x.svd <- svd(x)
+plot(x %*% x.svd$v[,1],x %*% x.svd$v[,2],col=rep(2:4,cbind(n1,n2,n3)),pch=rep(2:4,cbind(n1,n2,n3)))
+```
+
+## c. FDA
+```{r}
+n <- nrow(zip.train.centered)
+n1 <- nrow(train2.centered)
+n2<- nrow(train3.centered)
+n3<- nrow(train8.centered)
+
+S.b <- ((n1)*(train2.mu.hat-zip.train.mu.hat)%*%t(train2.mu.hat-zip.train.mu.hat)+
+       (n2)*(train3.mu.hat-zip.train.mu.hat)%*%t(train3.mu.hat-zip.train.mu.hat)+
+       (n3)*(train8.mu.hat-zip.train.mu.hat)%*%t(train8.mu.hat-zip.train.mu.hat))/(n-1)
+
+# within class covariance
+S.w <- (t(zip.train.centered[1:n1,] - rep(1,n1)%*% t(train2.mu.hat)) %*% (zip.train.centered[1:(n1),] - rep(1,n1)%*% t(train2.mu.hat)) +
+       t(zip.train.centered[(n1+1):(n1+n2),] - rep(1,n2)%*% t(train3.mu.hat)) %*% (zip.train.centered[(n1+1):(n1+n2),] - rep(1,n2)%*% t(train3.mu.hat)) +
+       t(zip.train.centered[(n1+n2+1):n,] - rep(1,n3)%*% t(train8.mu.hat)) %*% (zip.train.centered[(n1+n2+1):n,] - rep(1,n3)%*% t(train8.mu.hat)))/(n-3)
+
+# total variance
+S.t <- t(zip.train.centered - rep(1,n)%*% t(zip.train.mu.hat)) %*% (zip.train.centered - rep(1,n)%*% t(zip.train.mu.hat))
+
+# relation
+# S.t - S.b*(n-1) - S.w*(n-K) = 0
+max(abs(S.t - S.b*(n-1) - S.w*(n-3)))
+
+# define relative matrix
+S <- solve(S.w) %*% S.b
+
+# eigen decomp. of S
+S.eig <- eigen(S)
+t(Re(S.eig$vectors[,1:2]))%*%(Re(S.eig$vectors[,1:2])) # not orthogonal any more
+
+plot(x %*% Re(S.eig$vectors)[,1], x%*% Re(S.eig$vectors)[,2], col=rep(2:4,cbind(n1,n2,n3)),pch=rep(2:4,cbind(n1,n2,n3)),main = "FDA")
+
+S.eig$values[1:2]
+```
+
+## d.
+```{r}
+g <- rep(NA, nrow(zip.train))
+g[1:(nrow(train2))] <- 1
+g[(nrow(train2)+1):(nrow(train2)+nrow(train3))] <- 2
+g[(nrow(train2)[1]+nrow(train3)+1):(nrow(zip.train))] <- 3
+
+h <- rep(NA, nrow(zip.test))
+h[1:(nrow(test2))] <- 1
+h[(nrow(test2)+1):(nrow(test2)+nrow(test3))] <- 2
+h[(nrow(test2)[1]+nrow(test3)+1):(nrow(zip.test))] <- 3
+
+yy <- cbind(g==1,g==2,g==3)*1   # logic matrix to numeric matrix
+xx <- cbind(rep(1,nrow(zip.train.centered)),zip.train.centered)
+xx.test <- cbind(rep(1,nrow(zip.test.centered)),zip.test.centered)
+yy.test <- cbind(h==1,h==2,h==3)*1   # logic matrix to numeric matrix
+
+# check all the row sums are 1
+all(apply(yy,1,sum)==1)
+```
+
+## OLS
+```{r}
+ols.coef <- solve(t(xx)%*%xx)%*%t(xx)%*%yy
+head(ols.coef)
+lmall <- lm(yy~xx[,-1])
+head(coef(lmall)) # should = head(B)
+
+y.train.hat <- xx%*%ols.coef
+y.test.hat <- cbind(1,zip.test.centered)%*%ols.coef
+
+############ training error #################
+# extract the maximum y.train.hat
+y.grp<-apply(y.train.hat,1,function(x) max(x))
+
+# assign the estimated y groups
+y.compare<-cbind(y.train.hat[,1]==y.grp,y.train.hat[,2]==y.grp,y.train.hat[,3]==y.grp)==yy
+train.error.lm <-sum(apply(y.compare,1,sum)<3)/nrow(y.compare)
+train.error.lm
+
+############ testing error #################
+# extract the maximum y.test.hat
+y.grp<-apply(y.test.hat,1,function(x) max(x))
+
+# assign the estimated y groups
+y.compare<-cbind(y.test.hat[,1]==y.grp,y.test.hat[,2]==y.grp,y.test.hat[,3]==y.grp)==yy.test
+test.error.lm <-sum(apply(y.compare,1,sum)<3)/nrow(y.compare)
+test.error.lm
+```
+
+## Logistic
+```{r}
+ans.logistic <- glmnet(xx,yy, family="multinomial",lambda = 0)
+
+# link function
+a.train <- predict(ans.logistic,xx,type = "link")
+a.test <- predict(ans.logistic,xx.test,type = "link")
+
+# posterior probability
+p.train <- exp(a.train)/(exp(a.train)+1)
+p.test <- exp(a.test)/(exp(a.test)+1)
+
+# training error
+classification.train <- table(p.train>.5,yy)
+1-sum(diag(classification.train))/sum(classification.train)
+
+# testing error
+classification.test <- table(p.test>.5,yy.test)
+1-sum(diag(classification.test))/sum(classification.test)
+```
+## LDA
+```{r}
+pi2.hat <- mean(g==1)
+pi3.hat <- mean(g==2)
+pi8.hat <- mean(g==3)
+
+### training error
+delta.hat <-
+  cbind(log(pi2.hat)-diag((zip.train-rep(1,n)%*% t(train2.mu.hat))%*% solve(S.w)%*%t(zip.train-rep(1,n)%*% t(train2.mu.hat))/2),
+        log(pi3.hat)-diag((zip.train-rep(1,n)%*% t(train3.mu.hat))%*% solve(S.w)%*%t(zip.train-rep(1,n)%*% t(train3.mu.hat))/2),
+        log(pi8.hat)-diag((zip.train-rep(1,n)%*% t(train8.mu.hat))%*% solve(S.w)%*%t(zip.train-rep(1,n)%*% t(train8.mu.hat))/2))
+
+g.hat <- apply(delta.hat,1,which.max)
+mean(g.hat != g)
+
+### testing error
+n.test <- nrow(zip.test)
+delta.hat.test <-
+  cbind(log(pi2.hat)-diag((zip.test-rep(1,n.test)%*% t(test2.mu.hat))%*% solve(S.w)%*%t(zip.test-rep(1,n.test)%*% t(test2.mu.hat))/2),
+        log(pi3.hat)-diag((zip.test-rep(1,n.test)%*% t(test3.mu.hat))%*% solve(S.w)%*%t(zip.test-rep(1,n.test)%*% t(test3.mu.hat))/2),
+        log(pi8.hat)-diag((zip.test-rep(1,n.test)%*% t(test8.mu.hat))%*% solve(S.w)%*%t(zip.test-rep(1,n.test)%*% t(test8.mu.hat))/2))
+
+g.test <- rep(NA, nrow(zip.test))
+g.test[1:(nrow(test2))] <- 1
+g.test[(nrow(test2)+1):(nrow(test2)+nrow(test3))] <- 2
+g.test[(nrow(test2)[1]+nrow(test3)+1):(nrow(zip.test))] <- 3
+
+g.hat.test <- apply(delta.hat.test,1,which.max)
+mean(g.hat.test != g.test)
+```
+
+## f.
+## OLS
+```{r}
+pc <- eigen(cov(zip.train.centered))
+A <- pc$vectors[, 1:2]
+new_x_train <- zip.train.centered %*% A
+new_x_train <- cbind(rep(1,nrow(new_x_train)),new_x_train)
+
+new_x_test <- zip.test.centered %*% A
+new_x_test <- cbind(rep(1,nrow(new_x_test)),new_x_test)
+
+yy <- cbind(g==1,g==2,g==3)*1   
+yy.test <- cbind(h==1,h==2,h==3)*1   # logic matrix to numeric matrix
+
+ols.coef <- solve(t(new_x_train)%*%new_x_train)%*%t(new_x_train)%*%yy
+head(ols.coef)
+lmall <- lm(yy~new_x_train[,-1])
+head(coef(lmall)) # should = head(ols.coef)
+
+y.train.hat <- new_x_train%*%ols.coef
+y.test.hat <- new_x_test%*%ols.coef
+############ training error #################
+# extract the maximum y.train.hat
+y.grp <- apply(y.train.hat,1,function(x) max(x))
+
+# assign the estimated y groups
+y.compare<-cbind(y.train.hat[,1]==y.grp,y.train.hat[,2]==y.grp,y.train.hat[,3]==y.grp)==yy
+train.error.lm <-sum(apply(y.compare,1,sum)<3)/nrow(y.compare)
+train.error.lm
+
+############ testing error #################
+# extract the maximum y.test.hat
+y.grp<-apply(y.test.hat,1,function(x) max(x))
+
+# assign the estimated y groups
+y.compare<-cbind(y.test.hat[,1]==y.grp,y.test.hat[,2]==y.grp,y.test.hat[,3]==y.grp)==yy.test
+test.error.lm <-sum(apply(y.compare,1,sum)<3)/nrow(y.compare)
+test.error.lm
+
+ols.coef
+intercepts <- ols.coef[1,]
+slope1 <- ols.coef[2,]
+slope2 <- ols.coef[3,]
+
+plot(x %*% x.svd$v[,1],x %*% x.svd$v[,2],col=rep(2:4,cbind(n1,n2,n3)),pch=rep(2:4,cbind(n1,n2,n3)))
+abline((intercepts[1]-intercepts[2])/(slope1[2]-slope1[1]),-(slope2[2]-slope2[1])/(slope1[2]-slope1[1]),col=5)
+abline((intercepts[1]-intercepts[3])/(slope1[3]-slope1[1]),-(slope2[3]-slope2[1])/(slope1[3]-slope1[1]),col=6)
+abline((intercepts[3]-intercepts[2])/(slope1[2]-slope1[3]),-(slope2[2]-slope2[3])/(slope1[2]-slope1[3]),col=7)
+```
+
+## Logistic
+```{r}
+ans.logistic <- glmnet(new_x_train[,2:3],yy, family="multinomial",lambda = 0)
+
+# link function
+a.train <- predict(ans.logistic,new_x_train[,2:3],type = "link")
+a.test <- predict(ans.logistic,new_x_test[,2:3],type = "link")
+
+# posterior probability
+p.train <- exp(a.train)/(exp(a.train)+1)
+p.test <- exp(a.test)/(exp(a.test)+1)
+
+# training error
+classification.train <- table(p.train>.5,yy)
+1-sum(diag(classification.train))/sum(classification.train)
+
+# testing error
+classification.test <- table(p.test>.5,yy.test)
+1-sum(diag(classification.test))/sum(classification.test)
+
+coef(ans.logistic)
+
+intercepts <- c(coef(ans.logistic)[[1]][1],coef(ans.logistic)[[2]][1],coef(ans.logistic)[[3]][1])
+slope1 <- c(coef(ans.logistic)[[1]][2],coef(ans.logistic)[[2]][2],coef(ans.logistic)[[3]][2])
+slope2 <- c(coef(ans.logistic)[[1]][3],coef(ans.logistic)[[2]][3],coef(ans.logistic)[[3]][3])
+
+plot(x %*% x.svd$v[,1],x %*% x.svd$v[,2],col=rep(2:4,cbind(n1,n2,n3)),pch=rep(2:4,cbind(n1,n2,n3)))
+abline((intercepts[1]-intercepts[2])/(slope1[2]-slope1[1]),-(slope2[2]-slope2[1])/(slope1[2]-slope1[1]),col=5)
+abline((intercepts[1]-intercepts[3])/(slope1[3]-slope1[1]),-(slope2[3]-slope2[1])/(slope1[3]-slope1[1]),col=6)
+abline((intercepts[3]-intercepts[2])/(slope1[2]-slope1[3]),-(slope2[2]-slope2[3])/(slope1[2]-slope1[3]),col=7)
+```
+
+## LDA
+```{r}
+## The following code cannot run for some reason.
+new_x_train <- zip.train.centered %*% A
+mu.2pc.hat <- apply(new_x_train[1:n1,], 2, mean)
+mu.3pc.hat <- apply(new_x_train[(n1+1):(n1+n2),,drop=FALSE], 2, mean)
+mu.8pc.hat <- apply(new_x_train[(n1+n2+1):n,], 2, mean)
+
+S.w <- (t(new_x_train[1:n1,,drop=FALSE] - rep(1,n1)%*% t(mu.2pc.hat)) %*% (new_x_train[1:(n1),,drop=FALSE] - rep(1,n1)%*% t(mu.2pc.hat)) + t(new_x_train[(n1+1):(n1+n2),,drop=FALSE] - rep(1,n2)%*% t(mu.3pc.hat)) %*% (new_x_train[(n1+1):(n1+n2),,drop=FALSE] - rep(1,n2)%*% t(mu.3pc.hat)) + t(new_x_train[(n1+n2+1):n,,drop=FALSE] - rep(1,n3)%*% t(mu.8pc.hat)) %*% (new_x_train[(n1+n2+1):n,,drop=FALSE] - rep(1,n3)%*% t(mu.8pc.hat)))/(n-3)
+
+### training error
+delta.hat <-
+  cbind(log(pi2.hat)-diag((new_x_train -rep(1,n)%*% t(mu.2pc.hat))%*% solve(S.w)%*%t(new_x_train-rep(1,n)%*% t(mu.2pc.hat))/2),
+        log(pi3.hat)-diag((new_x_train-rep(1,n)%*% t(mu.3pc.hat))%*% solve(S.w)%*%t(new_x_train-rep(1,n)%*% t(mu.3pc.hat))/2),
+        log(pi8.hat)-diag((new_x_train-rep(1,n)%*% t(mu.8pc.hat))%*% solve(S.w)%*%t(new_x_train-rep(1,n)%*% t(mu.8pc.hat))/2))
+
+g.hat <- apply(delta.hat,1,which.max)
+mean(g.hat != g)
+### testing error
+
+new_x_test <- zip.test.centered %*% A
+n.test <- nrow(zip.test.centered)
+n1 <- nrow(test2.centered)
+n2<- nrow(test3.centered)
+n3<- nrow(test8.centered)
+test2.mu.hat <- apply(new_x_test[1:n1,], 2, mean)
+test3.mu.hat <- apply(new_x_test[(n1+1):(n1+n2),,drop=FALSE], 2, mean)
+test8.mu.hat <- apply(new_x_test[(n1+n2+1):n.test,], 2, mean)
+
+delta.hat.test <-
+  cbind(log(pi2.hat)-diag((new_x_test-rep(1,n.test)%*% t(test2.mu.hat))%*% solve(S.w)%*%t(new_x_test-rep(1,n.test)%*% t(test2.mu.hat))/2),
+        log(pi3.hat)-diag((new_x_test-rep(1,n.test)%*% t(test3.mu.hat))%*% solve(S.w)%*%t(new_x_test-rep(1,n.test)%*% t(test3.mu.hat))/2),
+        log(pi8.hat)-diag((new_x_test-rep(1,n.test)%*% t(test8.mu.hat))%*% solve(S.w)%*%t(new_x_test-rep(1,n.test)%*% t(test8.mu.hat))/2))
+
+g.test <- rep(NA, nrow(zip.test))
+g.test[1:(nrow(test2))] <- 1
+g.test[(nrow(test2)+1):(nrow(test2)+nrow(test3))] <- 2
+g.test[(nrow(test2)[1]+nrow(test3)+1):(nrow(zip.test))] <- 3
+
+g.hat.test <- apply(delta.hat.test,1,which.max)
+mean(g.hat.test != g.test)
+```
+
+## OLS
+
+<!-- pc <- eigen(cov(zip.train.centered)) -->
+<!-- A <- pc$vectors[, 1:2] -->
+<!-- new_x_train <- zip.train.centered %*% A -->
+<!-- new_x_train <- cbind(rep(1,nrow(new_x_train)),new_x_train) -->
+
+<!-- new_x_test <- zip.test.centered %*% A -->
+<!-- new_x_test <- cbind(rep(1,nrow(new_x_test)),new_x_test) -->
+
+<!-- yy <- cbind(g==1,g==2,g==3)*1    -->
+<!-- yy.test <- cbind(h==1,h==2,h==3)*1   # logic matrix to numeric matrix -->
+
+<!-- ols.coef <- solve(t(new_x_train)%*%new_x_train)%*%t(new_x_train)%*%yy -->
+<!-- head(ols.coef) -->
+<!-- lmall <- lm(yy~new_x_train[,-1]) -->
+<!-- head(coef(lmall)) # should = head(ols.coef) -->
+
+<!-- y.train.hat <- new_x_train%*%ols.coef -->
+<!-- y.test.hat <- new_x_test%*%ols.coef -->
+<!-- ############ training error ################# -->
+<!-- # extract the maximum y.train.hat -->
+<!-- y.grp <- apply(y.train.hat,1,function(x) max(x)) -->
+
+<!-- # assign the estimated y groups -->
+<!-- y.compare<-cbind(y.train.hat[,1]==y.grp,y.train.hat[,2]==y.grp,y.train.hat[,3]==y.grp)==yy -->
+<!-- train.error.lm <-sum(apply(y.compare,1,sum)<3)/nrow(y.compare) -->
+<!-- train.error.lm -->
+
+<!-- ############ testing error ################# -->
+<!-- # extract the maximum y.test.hat -->
+<!-- y.grp<-apply(y.test.hat,1,function(x) max(x)) -->
+
+<!-- # assign the estimated y groups -->
+<!-- y.compare<-cbind(y.test.hat[,1]==y.grp,y.test.hat[,2]==y.grp,y.test.hat[,3]==y.grp)==yy.test -->
+<!-- test.error.lm <-sum(apply(y.compare,1,sum)<3)/nrow(y.compare) -->
+<!-- test.error.lm -->
+
+<!-- ols.coef -->
+<!-- intercepts <- ols.coef[1,] -->
+<!-- slope1 <- ols.coef[2,] -->
+<!-- slope2 <- ols.coef[3,] -->
+
+<!-- plot(x %*% x.svd$v[,1],x %*% x.svd$v[,2],col=rep(2:4,cbind(n1,n2,n3)),pch=rep(2:4,cbind(n1,n2,n3))) -->
+<!-- abline((intercepts[1]-intercepts[2])/(slope1[2]-slope1[1]),-(slope2[2]-slope2[1])/(slope1[2]-slope1[1]),col=5) -->
+<!-- abline((intercepts[1]-intercepts[3])/(slope1[3]-slope1[1]),-(slope2[3]-slope2[1])/(slope1[3]-slope1[1]),col=6) -->
+<!-- abline((intercepts[3]-intercepts[2])/(slope1[2]-slope1[3]),-(slope2[2]-slope2[3])/(slope1[2]-slope1[3]),col=7) -->
+
+
+## Logistic
+```{r}
+# ans.logistic <- glmnet(new_x_train[,2:3],yy, family="multinomial",lambda = 0)
+# 
+# # link function
+# a.train <- predict(ans.logistic,new_x_train[,2:3],type = "link")
+# a.test <- predict(ans.logistic,new_x_test[,2:3],type = "link")
+# 
+# # posterior probability
+# p.train <- exp(a.train)/(exp(a.train)+1)
+# p.test <- exp(a.test)/(exp(a.test)+1)
+# 
+# # training error
+# classification.train <- table(p.train>.5,yy)
+# 1-sum(diag(classification))/sum(classification.train)
+# 
+# # testing error
+# classification.test <- table(p.test>.5,yy.test)
+# 1-sum(diag(classification.test))/sum(classification.test)
+# 
+# coef(ans.logistic)
+# 
+# intercepts <- c(coef(ans.logistic)[[1]][1],coef(ans.logistic)[[2]][1],coef(ans.logistic)[[3]][1])
+# slope1 <- c(coef(ans.logistic)[[1]][2],coef(ans.logistic)[[2]][2],coef(ans.logistic)[[3]][2])
+# slope2 <- c(coef(ans.logistic)[[1]][3],coef(ans.logistic)[[2]][3],coef(ans.logistic)[[3]][3])
+# 
+# plot(x %*% x.svd$v[,1],x %*% x.svd$v[,2],col=rep(2:4,cbind(n1,n2,n3)),pch=rep(2:4,cbind(n1,n2,n3)))
+# abline((intercepts[1]-intercepts[2])/(slope1[2]-slope1[1]),-(slope2[2]-slope2[1])/(slope1[2]-slope1[1]),col=5)
+# abline((intercepts[1]-intercepts[3])/(slope1[3]-slope1[1]),-(slope2[3]-slope2[1])/(slope1[3]-slope1[1]),col=6)
+# abline((intercepts[3]-intercepts[2])/(slope1[2]-slope1[3]),-(slope2[2]-slope2[3])/(slope1[2]-slope1[3]),col=7)
+```
+
+## LDA
+```{r}
+# ## The following code cannot run for some reason.
+# new_x_train <- zip.train.centered %*% A
+# mu.2pc.hat <- apply(new_x_train[1:n1,], 2, mean)
+# mu.3pc.hat <- apply(new_x_train[(n1+1):(n1+n2),,drop=FALSE], 2, mean)
+# mu.8pc.hat <- apply(new_x_train[(n1+n2+1):n,], 2, mean)
+# 
+# S.w <- (t(new_x_train[1:n1,,drop=FALSE] - rep(1,n1)%*% t(mu.2pc.hat)) %*% (new_x_train[1:(n1),,drop=FALSE] - rep(1,n1)%*% t(mu.2pc.hat)) + t(new_x_train[(n1+1):(n1+n2),,drop=FALSE] - rep(1,n2)%*% t(mu.3pc.hat)) %*% (new_x_train[(n1+1):(n1+n2),,drop=FALSE] - rep(1,n2)%*% t(mu.3pc.hat)) + t(new_x_train[(n1+n2+1):n,,drop=FALSE] - rep(1,n3)%*% t(mu.8pc.hat)) %*% (new_x_train[(n1+n2+1):n,,drop=FALSE] - rep(1,n3)%*% t(mu.8pc.hat)))/(n-3)
+# 
+# ### training error
+# delta.hat <-
+#   cbind(log(pi2.hat)-diag((new_x_train -rep(1,n)%*% t(mu.2pc.hat))%*% solve(S.w)%*%t(new_x_train-rep(1,n)%*% t(mu.2pc.hat))/2),
+#         log(pi3.hat)-diag((new_x_train-rep(1,n)%*% t(mu.3pc.hat))%*% solve(S.w)%*%t(new_x_train-rep(1,n)%*% t(mu.3pc.hat))/2),
+#         log(pi8.hat)-diag((new_x_train-rep(1,n)%*% t(mu.8pc.hat))%*% solve(S.w)%*%t(new_x_train-rep(1,n)%*% t(mu.8pc.hat))/2))
+# 
+# g.hat <- apply(delta.hat,1,which.max)
+# mean(g.hat != g)
+# 
+# ### testing error
+# new_x_test <- zip.test.centered %*% A
+# n.test <- nrow(zip.test.centered)
+# n1 <- nrow(test2.centered)
+# n2<- nrow(test3.centered)
+# n3<- nrow(test8.centered)
+# test2.mu.hat <- apply(new_x_test[1:n1,], 2, mean)
+# test3.mu.hat <- apply(new_x_test[(n1+1):(n1+n2),,drop=FALSE], 2, mean)
+# test8.mu.hat <- apply(new_x_test[(n1+n2+1):n,], 2, mean)
+# 
+# delta.hat.test <-
+#   cbind(log(pi2.hat)-diag((new_x_test-rep(1,n.test)%*% t(test2.mu.hat))%*% solve(S.w)%*%t(new_x_test-rep(1,n.test)%*% t(test2.mu.hat))/2),
+#         log(pi3.hat)-diag((new_x_test-rep(1,n.test)%*% t(test3.mu.hat))%*% solve(S.w)%*%t(new_x_test-rep(1,n.test)%*% t(test3.mu.hat))/2),
+#         log(pi8.hat)-diag((new_x_test-rep(1,n.test)%*% t(test8.mu.hat))%*% solve(S.w)%*%t(new_x_test-rep(1,n.test)%*% t(test8.mu.hat))/2))
+# 
+# g.test <- rep(NA, nrow(zip.test))
+# g.test[1:(nrow(test2))] <- 1
+# g.test[(nrow(test2)+1):(nrow(test2)+nrow(test3))] <- 2
+# g.test[(nrow(test2)[1]+nrow(test3)+1):(nrow(zip.test))] <- 3
+# 
+# g.hat.test <- apply(delta.hat.test,1,which.max)
+# mean(g.hat.test != g.test)
+```
+
+## h
+```{r}
+# nfolds = 5
+# set.seed(1)
+# folds = split(sample(n),rep(1:nfolds,length=n))
+# 
+# as.data.frame(folds)
+# 
+# cv.pc
+# 
+# cv.err.pcr = matrix(NA,5,255)
+# for (i in 1:5){
+#   
+#   pcr.fit=pcr(y.train~., data=train.dat[nfolds != i,],scale=FALSE, validation="none")
+#   for (j in 1:255){
+#   pcr.pred <- predict(pcr.fit,data=train.dat[nfolds == i,], ncomp = j)
+#   cv.err.pcr[i,j] = mean((pcr.pred> 0.5)!= y.train[nfolds == i])
+#   }
+# }
+```
+```
+
+

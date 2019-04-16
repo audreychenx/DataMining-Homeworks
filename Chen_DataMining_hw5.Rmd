@@ -1,0 +1,479 @@
+---
+title: "Chen_DataMinging_hw5"
+author: "Xuejun Chen"
+date: "2018/4/22"
+output: pdf_document
+---
+```{r message=FALSE, warning=FALSE}
+library(e1071)
+library(expm)
+library(kernlab)
+library(MASS)
+library(caret)
+```
+
+```{r}
+load("/Users/AudreyChen/Desktop/Data\ Mining/hw3.rdata")
+
+```
+
+```{r include=FALSE}
+# center data
+zip.train <- rbind(train2,train3,train8)
+zip.test <- rbind(test2,test3,test8)
+zip.train.mu.hat <- apply(zip.train,2,mean)
+zip.test.mu.hat <- apply(zip.test,2,mean)
+zip.train.centered <- zip.train - rep(1,nrow(zip.train))%*%t(zip.train.mu.hat)
+zip.test.centered <- zip.test - rep(1,nrow(zip.test))%*%t(zip.test.mu.hat)
+n <- nrow(zip.train.centered)
+n_test <- nrow(zip.test.centered)
+
+g <- rep(NA, nrow(zip.train))
+g[1:(nrow(train2))] <- 1
+g[(nrow(train2)+1):(nrow(train2)+nrow(train3))] <- 2
+g[(nrow(train2)[1]+nrow(train3)+1):(nrow(zip.train))] <- 3
+
+h <- rep(NA, nrow(zip.test))
+h[1:(nrow(test2))] <- 1
+h[(nrow(test2)+1):(nrow(test2)+nrow(test3))] <- 2
+h[(nrow(test2)[1]+nrow(test3)+1):(nrow(zip.test))] <- 3
+
+yy <- cbind(g==1,g==2,g==3)*1 
+yy.test <- cbind(h==1,h==2,h==3)*1 
+
+x.train<-zip.train-rep(1,nrow(zip.train))%*%t(zip.train.mu.hat)
+x.test<-zip.test-rep(1,nrow(zip.test))%*%t(zip.test.mu.hat)
+
+```
+
+##3.kernel PCA
+```{r}
+par(mfrow=c(2,2))
+sigma.list <- c(0.016,0.018,0.0185)
+#Radial Basis
+x <- zip.train.centered
+for(sigma in sigma.list){
+  kpc <- kpca(x,kernel="rbfdot", kpar=list(sigma=sigma),features=2)
+  plot(rotated(kpc),col=g+1, xlab="1st Principal Component",ylab="2nd Principal Component",main=paste("sigma=",sigma,sep=""))
+}
+
+head(rotated(kpc))
+dim(rotated(kpc))
+```
+
+<!-- ## 4.kernel FDA -->
+<!-- ```{r} -->
+<!-- kernelfda<- function(trainData = data, kernel.name = "rbfdot", kpar.sigma, threshold){ -->
+<!--   kfda.models <- list() -->
+<!--   class(kfda.models) <- "Kernel Fisher Discriminant Analysis" -->
+
+<!--   kpca.train <- kpca(~., -->
+<!--                      data = data.frame(trainData), -->
+<!--                      kernel = kernel.name, -->
+<!--                      kpar = list(sigma = kpar.sigma), -->
+<!--                      th = threshold -->
+<!--   ) -->
+
+<!--   kpca.score <- as.data.frame(predict(kpca.train,trainData)) -->
+<!--   colnames(kpca.score)[dim(kpca.score)[2]] <- c("Y") -->
+<!--   kpca.score$Y <- trainData[, dim(trainData)[2]] -->
+
+<!--   # kpca + lda train phase -->
+<!--   lda <- lda(kpca.score$Y~.,data = kpca.score) -->
+
+<!--   LDs <- rotated(kpca.train)%*%as.numeric(lda$scaling) -->
+
+<!--   kfda.models$kpca.train <- kpca.train -->
+<!--   kfda.models$lda <- lda -->
+<!--   kfda.models$LDs <- LDs -->
+
+<!--   return(kfda.models) -->
+<!-- } -->
+
+<!-- kfda <- kernelfda(data.frame(x.train), kpar.sigma = 0.001, threshold = 1e-5) -->
+
+<!-- Scores <- t(x.train)%*%LDs[,1:2] -->
+<!-- plot(kfda$lda.rotation.train[,1], kfda$lda.rotation.train[,2], col=rep(2:4,c(n_train2,n_train3,n_train8)),main="Kernel FDA") -->
+
+<!-- Kernel<-function(x,y){ -->
+<!-- Distance<-dist(rbind(x,y),method="euclidean") -->
+<!-- K<-exp(-Distance/(2*sigma^2)) -->
+<!-- } -->
+
+<!-- KRBF<-Kernel(x.train,x.train) -->
+
+<!-- rbf <- rbfdot(sigma = 0.1) -->
+<!-- KRBF1<-kernelMatrix(rbf,x.train) -->
+
+<!-- par(mfrow=c(3,3)) -->
+<!-- sigma.list<- c(0.001,0.005,0.007,0.008,.01,0.015,0.02,0.03,0.5) -->
+<!-- for(sigma in sigma.list){ -->
+<!--   kfd<-kfa(x.train,kernel="rbfdot",kpar=list(sigma=sigma)) -->
+<!--   #plot kernel PC scores  -->
+<!-- plot(predict(kfd,x.train),col=y.train+1, xlab="1st Principal Component",ylab="2nd Principal Component",main=paste("sigma=",sigma,sep=""))  -->
+<!-- } -->
+<!-- ``` -->
+
+## 5. Compare the plots of the first two scores from plain PCA, plain FDA, kernel PCA, and kernel FDA.
+```{r }
+par(mfrow=c(2,2))
+#plain PCA
+n_train2 <- nrow(train2)
+n_train3 <- nrow(train3)
+n_train8 <- nrow(train8)
+
+svd <- svd(x.train)
+plot(x.train%*%svd$v[,1],x.train%*%svd$v[,2],col=rep(2:4,c(n_train2,n_train3,n_train8)),main="plain PCA")
+#kernel PCA
+ kpc<-kpca(x.train,kernel="rbfdot",kpar=list(sigma=0.007),features=2)
+plot(rotated(kpc),col=g+1, xlab="1st Principal Component",ylab="2nd Principal Component",main=paste("Kernel PCA sigma=",sigma,sep="")) 
+
+# plain FDA
+mu.hat<-apply(x.train,2,mean)
+mu.hat2<-apply(x.train[1:731,],2,mean)
+mu.hat3<-apply(x.train[732:1389,],2,mean)
+mu.hat8<-apply(x.train[1390:1931,],2,mean)
+
+# between class covariance
+S.b <- ((n_train2)*(mu.hat2-mu.hat)%*%t(mu.hat2-mu.hat)+
+       (n_train3)*(mu.hat3-mu.hat)%*%t(mu.hat3-mu.hat)+
+       (n_train8)*(mu.hat8-mu.hat)%*%t(mu.hat8-mu.hat))/(n-1)
+
+# total variance
+S.t <- t(x.train - rep(1,n)%*% t(mu.hat)) %*% (x.train - rep(1,n)%*% t(mu.hat))
+
+# relation to culculate within class covariance
+# S.t*(n-1) - S.b*(n-1) - S.w*(n-K) = 0
+S.w = (S.t- S.b*(n-1))/(n-3)
+
+# define relative matrix
+S <- solve(S.w) %*% S.b
+
+# eigen decomp. of S
+S.eig <- eigen(S)
+
+# FDA projection
+plot(x.train %*% Re(S.eig$vectors)[,1], x.train%*% Re(S.eig$vectors)[,2], col=rep(2:4,c(n_train2,n_train3,n_train8)),main="Plain FDA")
+
+# kernel FDA 
+kfd<-kfa(x.train,kernel="rbfdot",kpar=list(sigma=0.001))
+plot(predict(kfd,x.train),col=g+1, xlab="1st Principal Component",ylab="2nd Principal Component") 
+
+```
+
+## 6. LDA on first two kernel PCA scores
+```{r}
+pi2.hat <- mean(g==1)
+pi3.hat <- mean(g==2)
+pi8.hat <- mean(g==3)
+
+kpc<-kpca(~.,data=data.frame(x.train),kernel="rbfdot",kpar=list(sigma=0.01),features=2)
+LDA.pca.train<-rotated(kpc) 
+#how to perform kpca on test data
+
+mu.2pc.hat <- apply(LDA.pca.train[1:731,,drop=FALSE],2,mean)
+mu.3pc.hat <- apply(LDA.pca.train[732:(731+658),,drop=FALSE],2,mean)
+mu.8pc.hat <- apply(LDA.pca.train[(731+658+1):(731+658+542),,drop=FALSE],2,mean)
+
+S.w <- (t(LDA.pca.train[1:731,,drop=FALSE] - rep(1,731)%*% t(mu.2pc.hat)) %*% (LDA.pca.train[1:731,,drop=FALSE] - rep(1,731)%*% t(mu.2pc.hat)) +
+       t(LDA.pca.train[732:1389,,drop=FALSE] - rep(1,658)%*% t(mu.3pc.hat)) %*% (LDA.pca.train[732:1389,,drop=FALSE] - rep(1,658)%*% t(mu.3pc.hat)) +
+       t(LDA.pca.train[1390:1931,,drop=FALSE] - rep(1,542)%*% t(mu.8pc.hat)) %*% (LDA.pca.train[1390:1931,,drop=FALSE] - rep(1,542)%*% t(mu.8pc.hat)))/(1931-3)
+
+#decision boundary
+slope1 <- solve(S.w) %*% (mu.3pc.hat-mu.2pc.hat)
+intercept1 <- log(pi3.hat/pi2.hat) - t(mu.3pc.hat+mu.2pc.hat) %*% solve(S.w) %*% (mu.3pc.hat-mu.2pc.hat)/2
+slope1
+intercept1
+
+slope2 <- solve(S.w) %*% (mu.8pc.hat-mu.2pc.hat)
+intercept2 <- log(pi8.hat/pi2.hat) - t(mu.8pc.hat+mu.2pc.hat) %*% solve(S.w) %*% (mu.8pc.hat-mu.2pc.hat)/2
+slope2
+intercept2
+
+slope3 <- solve(S.w) %*% (mu.8pc.hat-mu.3pc.hat)
+intercept3 <- log(pi8.hat/pi3.hat) - t(mu.8pc.hat+mu.3pc.hat) %*% solve(S.w) %*% (mu.8pc.hat-mu.3pc.hat)/2
+slope3
+intercept3
+
+#plot
+par(mfrow=c(1,1))
+plot(rotated(kpc),col=g+1,main="LDA with kernel PCA")
+abline(b=-slope1[1]/slope1[2],a=-intercept1/slope1[2],col=2)
+abline(b=-slope2[1]/slope2[2],a=-intercept2/slope2[2],col=3)
+abline(b=-slope3[1]/slope3[2],a=-intercept3/slope3[2],col=4)
+
+
+#training error
+delta.train.hat <-
+cbind(log(pi2.hat)-diag((LDA.pca.train-rep(1,n)%*% t(mu.2pc.hat))%*% solve(S.w)%*%t(LDA.pca.train-rep(1,n)%*% t(mu.2pc.hat))/2),
+      log(pi3.hat)-diag((LDA.pca.train-rep(1,n)%*% t(mu.3pc.hat))%*% solve(S.w)%*%t(LDA.pca.train-rep(1,n)%*% t(mu.3pc.hat))/2),
+      log(pi8.hat)-diag((LDA.pca.train-rep(1,n)%*% t(mu.8pc.hat))%*% solve(S.w)%*%t(LDA.pca.train-rep(1,n)%*% t(mu.8pc.hat))/2))
+
+lda.train.hat <- apply(delta.train.hat,1,which.max)
+KernelPCA.train.error<-mean(lda.train.hat != g)
+KernelPCA.train.error
+
+LDA.pca.test<-predict(kpc,x.test)
+delta.test.hat <-
+cbind(log(pi2.hat)-diag((LDA.pca.test-rep(1,n_test)%*% t(mu.2pc.hat))%*% solve(S.w)%*%t(LDA.pca.test-rep(1,n_test)%*% t(mu.2pc.hat))/2),
+      log(pi3.hat)-diag((LDA.pca.test-rep(1,n_test)%*% t(mu.3pc.hat))%*% solve(S.w)%*%t(LDA.pca.test-rep(1,n_test)%*% t(mu.3pc.hat))/2),
+      log(pi8.hat)-diag((LDA.pca.test-rep(1,n_test)%*% t(mu.8pc.hat))%*% solve(S.w)%*%t(LDA.pca.test-rep(1,n_test)%*% t(mu.8pc.hat))/2))
+
+lda.test.hat<-predict(kpc,x.test)
+lda.test.hat <- apply(delta.test.hat,1,which.max)
+lda.test.hat<-as.data.frame(lda.test.hat)[,1]
+KernelPCA.test.error<-mean(lda.test.hat != h)
+KernelPCA.test.error
+```
+## 7. LDA on the first two kernel FDA scores
+```{r}
+mu.hat<-apply(x.train,2,mean)
+mu.hat2<-apply(x.train[1:731,],2,mean)
+mu.hat3<-apply(x.train[732:1389,],2,mean)
+mu.hat8<-apply(x.train[1390:1931,],2,mean)
+
+# between class covariance
+S.b <- ((n_train2)*(mu.hat2-mu.hat)%*%t(mu.hat2-mu.hat)+
+       (n_train3)*(mu.hat3-mu.hat)%*%t(mu.hat3-mu.hat)+
+       (n_train8)*(mu.hat8-mu.hat)%*%t(mu.hat8-mu.hat))/(n-1)
+
+# total variance
+S.t <- t(x.train - rep(1,n)%*% t(mu.hat)) %*% (x.train - rep(1,n)%*% t(mu.hat))
+
+# relation to culculate within class covariance
+# S.t*(n-1) - S.b*(n-1) - S.w*(n-K) = 0
+S.w = (S.t- S.b*(n-1))/(n-3)
+
+# define relative matrix
+S <- solve(S.w) %*% S.b
+
+# eigen decomp. of S
+S.eig <- eigen(S)
+
+lda.fda.train<-x.train %*% Re(S.eig$vectors)[,1:2] #new x_train
+lda.fda.test<-x.test %*% Re(S.eig$vectors)[,1:2]
+
+mu.2pc.hat <- apply(lda.fda.train[1:731,,drop=FALSE],2,mean)
+mu.3pc.hat <- apply(lda.fda.train[732:(731+658),,drop=FALSE],2,mean)
+mu.8pc.hat <- apply(lda.fda.train[(731+658+1):(731+658+542),,drop=FALSE],2,mean)
+
+S.w <- (t(lda.fda.train[1:731,,drop=FALSE] - rep(1,731)%*% t(mu.2pc.hat)) %*% (lda.fda.train[1:731,,drop=FALSE] - rep(1,731)%*% t(mu.2pc.hat)) +
+       t(lda.fda.train[732:1389,,drop=FALSE] - rep(1,658)%*% t(mu.3pc.hat)) %*% (lda.fda.train[732:1389,,drop=FALSE] - rep(1,658)%*% t(mu.3pc.hat)) +
+       t(lda.fda.train[1390:1931,,drop=FALSE] - rep(1,542)%*% t(mu.8pc.hat)) %*% (lda.fda.train[1390:1931,,drop=FALSE] - rep(1,542)%*% t(mu.8pc.hat)))/(1931-3)
+
+#decision boundary
+slope1 <- solve(S.w) %*% (mu.3pc.hat-mu.2pc.hat)
+intercept1 <- log(pi3.hat/pi2.hat) - t(mu.3pc.hat+mu.2pc.hat) %*% solve(S.w) %*% (mu.3pc.hat-mu.2pc.hat)/2
+slope1
+intercept1
+
+slope2 <- solve(S.w) %*% (mu.8pc.hat-mu.2pc.hat)
+intercept2 <- log(pi8.hat/pi2.hat) - t(mu.8pc.hat+mu.2pc.hat) %*% solve(S.w) %*% (mu.8pc.hat-mu.2pc.hat)/2
+slope2
+intercept2
+
+slope3 <- solve(S.w) %*% (mu.8pc.hat-mu.3pc.hat)
+intercept3 <- log(pi8.hat/pi3.hat) - t(mu.8pc.hat+mu.3pc.hat) %*% solve(S.w) %*% (mu.8pc.hat-mu.3pc.hat)/2
+slope3
+intercept3
+
+#plot
+par(mfrow=c(1,1))
+plot(x.train %*% Re(S.eig$vectors)[,1], x.train%*% Re(S.eig$vectors)[,2],main="LDA with two FDA")
+abline(b=-slope1[1]/slope1[2],a=-intercept1/slope1[2],col=2)
+abline(b=-slope2[1]/slope2[2],a=-intercept2/slope2[2],col=3)
+abline(b=-slope3[1]/slope3[2],a=-intercept3/slope3[2],col=4)
+
+
+#training error
+delta.train.hat <-
+cbind(log(pi2.hat)-diag((lda.fda.train-rep(1,n)%*% t(mu.2pc.hat))%*% solve(S.w)%*%t(lda.fda.train-rep(1,n)%*% t(mu.2pc.hat))/2),
+      log(pi3.hat)-diag((lda.fda.train-rep(1,n)%*% t(mu.3pc.hat))%*% solve(S.w)%*%t(lda.fda.train-rep(1,n)%*% t(mu.3pc.hat))/2),
+      log(pi8.hat)-diag((lda.fda.train-rep(1,n)%*% t(mu.8pc.hat))%*% solve(S.w)%*%t(lda.fda.train-rep(1,n)%*% t(mu.8pc.hat))/2))
+
+lda.train.hat <- apply(delta.train.hat,1,which.max)
+KernelFda.train.error<-mean(lda.train.hat != g)
+KernelFda.train.error 
+
+
+n_test <- nrow(zip.test.centered)
+
+#test error
+delta.test.hat <-
+cbind(log(pi2.hat)-diag((lda.fda.test-rep(1,n_test)%*% t(mu.2pc.hat))%*% solve(S.w)%*%t(lda.fda.test-rep(1,n_test)%*% t(mu.2pc.hat))/2),
+      log(pi3.hat)-diag((lda.fda.test-rep(1,n_test)%*% t(mu.3pc.hat))%*% solve(S.w)%*%t(lda.fda.test-rep(1,n_test)%*% t(mu.3pc.hat))/2),
+      log(pi8.hat)-diag((lda.fda.test-rep(1,n_test)%*% t(mu.8pc.hat))%*% solve(S.w)%*%t(lda.fda.test-rep(1,n_test)%*% t(mu.8pc.hat))/2))
+
+lda.test.hat <- apply(delta.test.hat,1,which.max)
+KernelFda.test.error<-mean(lda.test.hat != h)
+KernelFda.test.error
+```
+
+## 8. Compare
+```{r}
+#HW3
+#LDA on plain PCA
+mu.hat<-apply(x.train,2,mean)
+x.svd<-svd(x.train-rep(1,n)%*%t(mu.hat))
+LDA.pca.train<-x.train %*% x.svd$v[,1:2]
+LDA.pca.test<-x.test %*% x.svd$v[,1:2]
+
+mu.2pc.hat <- apply(LDA.pca.train[1:731,,drop=FALSE],2,mean)
+mu.3pc.hat <- apply(LDA.pca.train[732:(731+658),,drop=FALSE],2,mean)
+mu.8pc.hat <- apply(LDA.pca.train[(731+658+1):(731+658+542),,drop=FALSE],2,mean)
+
+S.w <- (t(LDA.pca.train[1:731,,drop=FALSE] - rep(1,731)%*% t(mu.2pc.hat)) %*% (LDA.pca.train[1:731,,drop=FALSE] - rep(1,731)%*% t(mu.2pc.hat)) +
+       t(LDA.pca.train[732:1389,,drop=FALSE] - rep(1,658)%*% t(mu.3pc.hat)) %*% (LDA.pca.train[732:1389,,drop=FALSE] - rep(1,658)%*% t(mu.3pc.hat)) +
+       t(LDA.pca.train[1390:1931,,drop=FALSE] - rep(1,542)%*% t(mu.8pc.hat)) %*% (LDA.pca.train[1390:1931,,drop=FALSE] - rep(1,542)%*% t(mu.8pc.hat)))/(1931-3)
+
+#training error
+delta.train.hat <-
+cbind(log(pi2.hat)-diag((LDA.pca.train-rep(1,n)%*% t(mu.2pc.hat))%*% solve(S.w)%*%t(LDA.pca.train-rep(1,n)%*% t(mu.2pc.hat))/2),
+      log(pi3.hat)-diag((LDA.pca.train-rep(1,n)%*% t(mu.3pc.hat))%*% solve(S.w)%*%t(LDA.pca.train-rep(1,n)%*% t(mu.3pc.hat))/2),
+      log(pi8.hat)-diag((LDA.pca.train-rep(1,n)%*% t(mu.8pc.hat))%*% solve(S.w)%*%t(LDA.pca.train-rep(1,n)%*% t(mu.8pc.hat))/2))
+
+lda.train.hat <- apply(delta.train.hat,1,which.max)
+lda.pca.train.error<-mean(lda.train.hat != g)
+lda.pca.train.error
+
+delta.test.hat <-
+cbind(log(pi2.hat)-diag((LDA.pca.test-rep(1,n_test)%*% t(mu.2pc.hat))%*% solve(S.w)%*%t(LDA.pca.test-rep(1,n_test)%*% t(mu.2pc.hat))/2),
+      log(pi3.hat)-diag((LDA.pca.test-rep(1,n_test)%*% t(mu.3pc.hat))%*% solve(S.w)%*%t(LDA.pca.test-rep(1,n_test)%*% t(mu.3pc.hat))/2),
+      log(pi8.hat)-diag((LDA.pca.test-rep(1,n_test)%*% t(mu.8pc.hat))%*% solve(S.w)%*%t(LDA.pca.test-rep(1,n_test)%*% t(mu.8pc.hat))/2))
+
+lda.test.hat <- apply(delta.test.hat,1,which.max)
+lda.pca.test.error<-mean(lda.test.hat != h)
+lda.pca.test.error
+
+#LDA on plain FDA
+lda.fda.train<-x.train %*% Re(S.eig$vectors)[,1:2]
+lda.fda.test<-x.test %*% Re(S.eig$vectors)[,1:2]
+
+mu.2pc.hat <- apply(lda.fda.train[1:731,,drop=FALSE],2,mean)
+mu.3pc.hat <- apply(lda.fda.train[732:(731+658),,drop=FALSE],2,mean)
+mu.8pc.hat <- apply(lda.fda.train[(731+658+1):(731+658+542),,drop=FALSE],2,mean)
+
+S.w <- (t(lda.fda.train[1:731,,drop=FALSE] - rep(1,731)%*% t(mu.2pc.hat)) %*% (lda.fda.train[1:731,,drop=FALSE] - rep(1,731)%*% t(mu.2pc.hat)) +
+       t(lda.fda.train[732:1389,,drop=FALSE] - rep(1,658)%*% t(mu.3pc.hat)) %*% (lda.fda.train[732:1389,,drop=FALSE] - rep(1,658)%*% t(mu.3pc.hat)) +
+       t(lda.fda.train[1390:1931,,drop=FALSE] - rep(1,542)%*% t(mu.8pc.hat)) %*% (lda.fda.train[1390:1931,,drop=FALSE] - rep(1,542)%*% t(mu.8pc.hat)))/(1931-3)
+
+#training error
+delta.train.hat <-
+cbind(log(pi2.hat)-diag((lda.fda.train-rep(1,n)%*% t(mu.2pc.hat))%*% solve(S.w)%*%t(lda.fda.train-rep(1,n)%*% t(mu.2pc.hat))/2),
+      log(pi3.hat)-diag((lda.fda.train-rep(1,n)%*% t(mu.3pc.hat))%*% solve(S.w)%*%t(lda.fda.train-rep(1,n)%*% t(mu.3pc.hat))/2),
+      log(pi8.hat)-diag((lda.fda.train-rep(1,n)%*% t(mu.8pc.hat))%*% solve(S.w)%*%t(lda.fda.train-rep(1,n)%*% t(mu.8pc.hat))/2))
+
+lda.train.hat <- apply(delta.train.hat,1,which.max)
+lda.fda.train.error<-mean(lda.train.hat != g)
+lda.fda.train.error #0.02382185
+
+#test error
+delta.test.hat <-
+cbind(log(pi2.hat)-diag((lda.fda.test-rep(1,n_test)%*% t(mu.2pc.hat))%*% solve(S.w)%*%t(lda.fda.test-rep(1,n_test)%*% t(mu.2pc.hat))/2),
+      log(pi3.hat)-diag((lda.fda.test-rep(1,n_test)%*% t(mu.3pc.hat))%*% solve(S.w)%*%t(lda.fda.test-rep(1,n_test)%*% t(mu.3pc.hat))/2),
+      log(pi8.hat)-diag((lda.fda.test-rep(1,n_test)%*% t(mu.8pc.hat))%*% solve(S.w)%*%t(lda.fda.test-rep(1,n_test)%*% t(mu.8pc.hat))/2))
+
+lda.test.hat <- apply(delta.test.hat,1,which.max)
+lda.fda.test.error<-mean(lda.test.hat != h)
+lda.fda.test.error 
+```
+
+
+
+## 10
+```{r}
+rm(list=ls(all=TRUE))
+set.seed(1)
+n <- 300
+x <- matrix(rnorm(n*2),ncol=2)
+x <- t(apply(x, 1, function(x){x/sqrt(sum(x^2))}))
+x <- diag(c(rep(1,n/3),rep(2,n/3),rep(4,n/3))) %*% x
+x <- x + matrix(rnorm(n*2),ncol=2)*.1
+y <- c(rep(1,n/3),rep(2,n/3),rep(3,n/3))
+plot(x,col=y+1)
+
+# Perform k-means with K=2
+km.out=kmeans(x,2,nstart=20)
+km.out$cluster
+plot(x, col=(km.out$cluster+1), main="K-Means Clustering Results with K=2", xlab="", ylab="", pch=20, cex=2)
+
+# K=3
+set.seed(4)
+km.out=kmeans(x,3,nstart=20)
+km.out
+plot(x, col=(km.out$cluster+1), main="K-Means Clustering Results with K=3", xlab="", ylab="", pch=20, cex=2)
+
+# spectral clustering 
+# Plot the eigen values from the smallest to the largest. 
+# Show the scatter plot again and demonstrate the spectral clustering results by using different colors for 
+# points in different clusters.
+
+# similarity matrix s using the gaussian kernel
+s <- function(x1, x2, alpha=1) {
+  exp(- alpha * norm(as.matrix(x1-x2), type="F"))
+}
+
+make.similarity <- function(my.data, similarity) {
+  N <- nrow(my.data)
+  S <- matrix(rep(NA,N^2), ncol=N)
+  for(i in 1:N) {
+    for(j in 1:N) {
+      S[i,j] <- similarity(my.data[i,], my.data[j,])
+    }
+  }
+  S
+}
+
+S <- make.similarity(x, s)
+################################################
+
+# weighted adjacency matrix W based on S
+make.affinity <- function(S, n.neighboors) {
+  N <- length(S[,1])
+
+  if (n.neighboors >= N) {  # fully connected
+    A <- S
+  } else {
+    A <- matrix(rep(0,N^2), ncol=N)
+    for(i in 1:N) { 
+      best.similarities <- sort(S[i,], decreasing=TRUE)[1:n.neighboors]
+      for (s in best.similarities) {
+        j <- which(S[i,] == s)
+        A[i,j] <- S[i,j]
+        A[j,i] <- S[i,j] # to make an undirected graph, ie, the matrix becomes symmetric
+      }
+    }
+  }
+  A  
+}
+
+A <- make.affinity(S, 6)  # use 3 neighboors (includes self)
+################################################
+# degree matrix D 
+D <- diag(apply(A, 1, sum)) # sum rows
+U <- D - A
+
+# normalized L
+"%^%" <- function(M, power)
+  with(eigen(M), vectors %*% (values^power * solve(vectors)))
+  
+L <- (D %^% (-1/2)) %*% U %*% (D %^% (-1/2))  # normalized Laplacian
+round(L[1:12,1:12],1)
+
+evL <- eigen(L,symmetric = TRUE)
+
+# Plot the eigen values in decreasing order
+plot(signif(evL$values,2))
+plot(1:10, rev(evL$values)[1:10])
+abline(v=3, col="red", lty=2) # there are just 3 clusters as expected
+
+k   <- 3
+sc <- specc(x, centers=3)
+plot(x, col=sc, pch=4)            # estimated classes (x)
+points(x, col=y+1, pch=5)         # true classes (<>)
+
+Z   <- evL$vectors[,(ncol(evL$vectors)-k+1):ncol(evL$vectors)]
+km <- kmeans(Z, centers=k, nstart=20)
+plot(x, col=(km$cluster+1))
+```
+
